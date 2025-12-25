@@ -51,6 +51,7 @@ class DashboardScreen extends StatelessWidget {
             tabs: [
               Tab(icon: Icon(Icons.insights), text: 'Predict'),
               Tab(icon: Icon(Icons.bar_chart), text: 'Visualize'),
+              Tab(icon: Icon(Icons.show_chart_outlined), text: 'Forcast'),
             ],
           ),
         ),
@@ -62,6 +63,13 @@ class DashboardScreen extends StatelessWidget {
             // Visualize Mode
             AnalysisModeScreen(
               mode: AnalysisMode.visualize,
+              fileId: dataset.fileId,
+              columns: dataset.columns,
+            ),
+
+            // Visualize Mode
+            AnalysisModeScreen(
+              mode: AnalysisMode.forecast,
               fileId: dataset.fileId,
               columns: dataset.columns,
             ),

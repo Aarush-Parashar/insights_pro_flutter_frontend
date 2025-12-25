@@ -198,7 +198,9 @@ class ForecastData {
 
   factory ForecastData.fromJson(Map<String, dynamic> json) {
     return ForecastData(
-      chartType: json['chart_type'] as String,
+      chartType: json.containsKey('chart_type')
+          ? json['chart_type'] as String
+          : 'Line',
       title: json['title'] as String,
       historical: List<Map<String, dynamic>>.from(json['historical'] as List),
       forecast: List<Map<String, dynamic>>.from(json['forecast'] as List),
