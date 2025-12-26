@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../state/app_state.dart';
 import '../../services/api_service.dart';
 import '../../models/models.dart';
-import '../../widgets/dynamic_form.dart';
 
 class PredictModeScreen extends StatefulWidget {
   final String fileId;
@@ -21,42 +20,22 @@ class PredictModeScreen extends StatefulWidget {
 
 class _PredictModeScreenState extends State<PredictModeScreen> {
   int _currentStep = 0;
-  List<PreprocessingQuestion>? _questions;
-  Map<String, String> _preprocessingConfig = {};
+
+  // We removed the complex questions. Now we just need the target.
   String? _targetVariable;
+  final Map<String, String> _preprocessingConfig =
+      {}; // Sends empty config (Backend uses defaults)
 
   ModelSelectionResponse? _modelSelectionResponse;
   String? _selectedModel;
 
-  Map<String, dynamic> _predictionInputData = {};
+  final Map<String, dynamic> _predictionInputData = {};
   PredictionResult? _predictionResult;
 
   bool _isLoading = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadQuestions();
-  }
-
-  Future<void> _loadQuestions() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    try {
-      final token = Provider.of<AppState>(context, listen: false).token;
-      _questions = await ApiService().getPredictQuestions(token!);
-    } catch (e) {
-      _error = 'Failed to load questions: ${e.toString()}';
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
+  // --- Step 1: Train Models ---
   Future<void> _getModelSelection() async {
     if (_targetVariable == null) {
       setState(() => _error = 'Please select a target variable.');
@@ -70,6 +49,8 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
 
     try {
       final token = Provider.of<AppState>(context, listen: false).token;
+
+      // We send an empty config, letting the Backend use its "Best Practice" defaults
       final config = PreprocessingConfig(
         config: _preprocessingConfig,
         targetVariable: _targetVariable!,
@@ -80,10 +61,12 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
         config,
         token!,
       );
-      _selectedModel =
-          _modelSelectionResponse!.modelNames.keys.first; // Default selection
 
-      // Initialize prediction input data map
+      // Auto-select the best model (first one in the list)
+      _selectedModel = _modelSelectionResponse!.modelNames.keys.first;
+
+      // Initialize inputs for the next step
+      _predictionInputData.clear();
       for (var input in _modelSelectionResponse!.predictionInputData) {
         if (input.inputtype == 'Dropdown' &&
             input.values != null &&
@@ -98,7 +81,7 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
         _currentStep = 1;
       });
     } catch (e) {
-      _error = 'Failed to get model selection: ${e.toString()}';
+      _error = 'Model training failed: ${e.toString()}';
     } finally {
       setState(() {
         _isLoading = false;
@@ -106,8 +89,9 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
     }
   }
 
+  // --- Step 2: Get Prediction ---
   Future<void> _getPrediction() async {
-    // Basic validation for prediction inputs
+    // Validate inputs
     for (var input in _modelSelectionResponse!.predictionInputData) {
       if (_predictionInputData[input.name] == null) {
         setState(() => _error = 'Please fill all prediction inputs.');
@@ -132,7 +116,7 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
         _currentStep = 2;
       });
     } catch (e) {
-      _error = 'Failed to get prediction: ${e.toString()}';
+      _error = 'Prediction failed: ${e.toString()}';
     } finally {
       setState(() {
         _isLoading = false;
@@ -140,13 +124,15 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
     }
   }
 
+  // --- UI Builders ---
+
   Widget _buildStepContent(int step) {
     switch (step) {
-      case 0: // Configuration
+      case 0:
         return _buildConfigurationStep();
-      case 1: // Model Selection & Prediction Input
+      case 1:
         return _buildPredictionInputStep();
-      case 2: // Output
+      case 2:
         return _buildOutputStep();
       default:
         return const Center(child: Text('Unknown Step'));
@@ -154,33 +140,35 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
   }
 
   Widget _buildConfigurationStep() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Text(_error!, style: const TextStyle(color: Colors.red)),
-      );
-    }
-    if (_questions == null) {
-      return const Center(child: Text('Loading questions...'));
-    }
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Target Variable Selection
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20.0),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+
           const Text(
-            '1. Select Target Variable',
+            'Select Target Variable',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          const Text(
+            "Choose the column you want to predict. The AI will automatically handle missing values and encoding.",
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 20),
+
           DropdownButtonFormField<String>(
             value: _targetVariable,
             decoration: const InputDecoration(
               labelText: 'Target Column',
               border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.track_changes),
             ),
             items: widget.columns.map((col) {
               return DropdownMenuItem(value: col, child: Text(col));
@@ -188,28 +176,25 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
             onChanged: (value) {
               setState(() {
                 _targetVariable = value;
+                _error = null;
               });
             },
-            validator: (value) => value == null ? 'Required' : null,
           ),
           const SizedBox(height: 30),
 
-          // Preprocessing Configuration
-          const Text(
-            '2. Preprocessing Configuration',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          DynamicForm(
-            questions: _questions!,
-            onConfigChanged: (config) {
-              _preprocessingConfig = config;
-            },
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _getModelSelection,
-            child: const Text('Proceed to Model Selection'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _getModelSelection,
+              icon: const Icon(Icons.model_training),
+              label: const Text(
+                'Train Auto-ML Models',
+                style: TextStyle(fontSize: 16),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
           ),
         ],
       ),
@@ -217,32 +202,30 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
   }
 
   Widget _buildPredictionInputStep() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Text(_error!, style: const TextStyle(color: Colors.red)),
-      );
-    }
-    if (_modelSelectionResponse == null) {
-      return const Center(child: Text('Model selection data not loaded.'));
-    }
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_modelSelectionResponse == null)
+      return const Center(child: Text('Error loading model.'));
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Model Selection
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20.0),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+
+          // Model Dropdown
           const Text(
-            '1. Model Selection (Sorted by Accuracy)',
+            'Model Performance',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             value: _selectedModel,
             decoration: const InputDecoration(
-              labelText: 'Select Model',
+              labelText: 'Selected Model',
               border: OutlineInputBorder(),
             ),
             items: _modelSelectionResponse!.modelNames.entries.map((entry) {
@@ -251,20 +234,17 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
                 child: Text('${entry.key} (${entry.value})'),
               );
             }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedModel = value;
-              });
-            },
+            onChanged: (value) => setState(() => _selectedModel = value),
           ),
           const SizedBox(height: 30),
 
-          // Prediction Input (Dynamic UI)
+          // Dynamic Inputs
           const Text(
-            '2. Enter Prediction Data',
+            'Enter Values to Predict',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
+
           ..._modelSelectionResponse!.predictionInputData.map((input) {
             if (input.inputtype == 'Dropdown') {
               return Padding(
@@ -279,14 +259,11 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
                     return DropdownMenuItem(value: value, child: Text(value));
                   }).toList(),
                   onChanged: (value) {
-                    if (value != null) {
-                      _predictionInputData[input.name] = value;
-                    }
+                    if (value != null) _predictionInputData[input.name] = value;
                   },
-                  validator: (value) => value == null ? 'Required' : null,
                 ),
               );
-            } else if (input.inputtype == 'Number') {
+            } else {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
                 child: TextFormField(
@@ -299,26 +276,25 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
                   onChanged: (value) {
                     _predictionInputData[input.name] = double.tryParse(value);
                   },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    final numValue = double.tryParse(value);
-                    if (numValue == null) return 'Must be a number';
-                    if (input.min != null && numValue < input.min!)
-                      return 'Min: ${input.min}';
-                    if (input.max != null && numValue > input.max!)
-                      return 'Max: ${input.max}';
-                    return null;
-                  },
                 ),
               );
             }
-            return const SizedBox.shrink();
           }).toList(),
 
           const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _getPrediction,
-            child: const Text('Get Prediction'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _getPrediction,
+              icon: const Icon(Icons.bolt),
+              label: const Text(
+                'Predict Result',
+                style: TextStyle(fontSize: 16),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
           ),
         ],
       ),
@@ -326,22 +302,15 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
   }
 
   Widget _buildOutputStep() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Text(_error!, style: const TextStyle(color: Colors.red)),
-      );
-    }
-    if (_predictionResult == null) {
-      return const Center(child: Text('No prediction result available.'));
-    }
+    if (_predictionResult == null)
+      return const Center(child: Text('No result.'));
 
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const Icon(Icons.check_circle, color: Colors.green, size: 60),
+          const SizedBox(height: 20),
           const Text(
             'Prediction Result',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -350,35 +319,30 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
           Card(
             elevation: 4,
             child: Padding(
-              padding: const EdgeInsets.all(32.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 32.0,
+                horizontal: 48.0,
+              ),
               child: Column(
                 children: [
                   Text(
-                    'Predicted Value:',
-                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
                     _predictionResult!.prediction,
                     style: const TextStyle(
-                      fontSize: 48,
+                      fontSize: 40,
                       fontWeight: FontWeight.w900,
                       color: Colors.blue,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   Text(
                     'Confidence: ${_predictionResult!.confidence}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontStyle: FontStyle.italic,
-                    ),
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 40),
           ElevatedButton.icon(
             onPressed: () {
               setState(() {
@@ -386,8 +350,7 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
                 _modelSelectionResponse = null;
                 _predictionResult = null;
                 _targetVariable = null;
-                _preprocessingConfig = {};
-                _predictionInputData = {};
+                _predictionInputData.clear();
               });
             },
             icon: const Icon(Icons.refresh),
@@ -405,9 +368,18 @@ class _PredictModeScreenState extends State<PredictModeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Predict Mode - Step ${_currentStep + 1}',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Predict Mode',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              Chip(
+                label: Text("Step ${_currentStep + 1}/3"),
+                backgroundColor: Colors.blue.shade50,
+              ),
+            ],
           ),
           const Divider(),
           Expanded(child: _buildStepContent(_currentStep)),
