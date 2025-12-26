@@ -100,7 +100,7 @@ class _AnalysisModeScreenState extends State<AnalysisModeScreen> {
             style: TextStyle(color: Colors.grey),
           ),
 
-          // --- NEW WARNING NOTE ---
+          // --- WARNING NOTE ---
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
@@ -196,6 +196,24 @@ class _AnalysisModeScreenState extends State<AnalysisModeScreen> {
             height: 400,
             child: ScatterChart(
               ScatterChartData(
+                // ---------------- ADDED SCATTER TOUCH DATA ----------------
+                scatterTouchData: ScatterTouchData(
+                  enabled: true,
+                  touchTooltipData: ScatterTouchTooltipData(
+                    getTooltipItems: (ScatterSpot spot) {
+                      return ScatterTooltipItem(
+                        // This displays: "X: 12.5 \n Y: 45.2"
+                        'X: ${spot.x.toStringAsFixed(1)}\nY: ${spot.y.toStringAsFixed(1)}',
+                        textStyle: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // ----------------------------------------------------------
                 scatterSpots: spots.map((e) => ScatterSpot(e.x, e.y)).toList(),
                 minX: spots.isEmpty
                     ? 0
@@ -300,8 +318,9 @@ class _AnalysisModeScreenState extends State<AnalysisModeScreen> {
                       interval: (allSpots.length / 5).ceilToDouble(),
                       getTitlesWidget: (value, meta) {
                         int index = value.toInt();
-                        if (index < 0 || index >= allSpots.length)
+                        if (index < 0 || index >= allSpots.length) {
                           return const Text('');
+                        }
 
                         String dateString = "";
                         if (index < data.historical.length) {
