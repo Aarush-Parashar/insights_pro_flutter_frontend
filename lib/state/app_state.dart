@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:insights_pro_flutter_frontend/models/models.dart';
 import 'package:insights_pro_flutter_frontend/services/api_service.dart';
 

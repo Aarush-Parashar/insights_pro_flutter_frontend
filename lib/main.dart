@@ -10,8 +10,6 @@ import 'secrets.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase (even though we are mocking the backend,
-  // we need the package for the Auth UI flow and models)
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
   runApp(
